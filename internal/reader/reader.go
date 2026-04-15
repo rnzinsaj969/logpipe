@@ -57,6 +57,23 @@ func (r *Reader) Next() (*LogEntry, error) {
 	return entry, nil
 }
 
+// ReadAll reads all remaining log entries from the reader until EOF.
+// Any parse error encountered will stop reading and return the error
+// along with the entries successfully read so far.
+func (r *Reader) ReadAll() ([]*LogEntry, error) {
+	var entries []*LogEntry
+	for {
+		entry, err := r.Next()
+		if err == io.EOF {
+			return entries, nil
+		}
+		if err != nil {
+			return entries, err
+		}
+		entries = append(entries, entry)
+	}
+}
+
 // parseLine decodes a JSON-encoded log line into a LogEntry.
 func parseLine(line []byte) (*LogEntry, error) {
 	var entry LogEntry
