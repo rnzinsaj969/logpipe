@@ -3,6 +3,7 @@
 package transform
 
 import (
+	"fmt"
 	"strings"
 
 	"github.com/yourorg/logpipe/internal/reader"
@@ -24,8 +25,27 @@ type Transformer struct {
 }
 
 // New returns a Transformer that will apply the given rules in order.
-func New(rules []Rule) *Transformer {
-	return &Transformer{rules: rules}
+// It returns an error if any rule contains an unrecognised field or op.
+func New(rules []Rule) (*Transformer, error) {
+	for _, r := range rules {
+		if err := validateRule(r); err != nil {
+			return nil, err
+		}
+	}
+	return &Transformer{rules: rules}, nil
+}
+
+// validateRule returns an error if the rule's Field or Op is not supported.
+func validateRule(r Rule) error {
+	validFields := map[string]bool{"message": true, "service": true, "level": true}
+	if !validFields[r.Field] {
+		return fmt.Errorf("transform: unsupported field %q", r.Field)
+	}
+	validOps := map[string]bool{"upper": true, "lower": true, "trim": true, "prefix": true}
+	if !validOps[r.Op] {
+		return fmt.Errorf("transform: unsupported op %q", r.Op)
+	}
+	return nil
 }
 
 // Apply returns a copy of entry with all rules applied.
