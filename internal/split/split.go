@@ -65,6 +65,17 @@ func (s *Splitter) Apply(entry reader.LogEntry) []reader.LogEntry {
 	return out
 }
 
+// ApplyAll applies the splitter to each entry in entries and returns the
+// concatenated results. It is a convenience wrapper around Apply for
+// processing a batch of log entries in one call.
+func (s *Splitter) ApplyAll(entries []reader.LogEntry) []reader.LogEntry {
+	var out []reader.LogEntry
+	for _, e := range entries {
+		out = append(out, s.Apply(e)...)
+	}
+	return out
+}
+
 // cloneEntry returns a shallow copy of e with a new Extra map.
 func cloneEntry(e reader.LogEntry) reader.LogEntry {
 	cloned := e
