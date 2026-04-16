@@ -5,6 +5,11 @@
 // stored in LogEntry.Extra under that field is clamped to the range.
 // Non-numeric values and absent fields are passed through unchanged.
 //
+// Validation
+//
+// New returns an error if any Rule has Min greater than Max, or if the
+// same field name appears more than once across the provided rules.
+//
 // Example usage:
 //
 //	c, err := clip.New([]clip.Rule{
