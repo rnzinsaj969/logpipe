@@ -38,3 +38,15 @@ func TestRunMissingSources(t *testing.T) {
 		t.Fatal("expected error for config with no sources, got nil")
 	}
 }
+
+func TestRunInvalidYAML(t *testing.T) {
+	path := writeTempMain(t, ":::invalid yaml:::")
+
+	old := os.Args
+	defer func() { os.Args = old }()
+	os.Args = []string{"logpipe", path}
+
+	if err := run(); err == nil {
+		t.Fatal("expected error for invalid YAML config, got nil")
+	}
+}
