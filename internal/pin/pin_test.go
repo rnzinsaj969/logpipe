@@ -44,6 +44,19 @@ func TestPinLevel(t *testing.T) {
 	}
 }
 
+func TestPinService(t *testing.T) {
+	entry := base()
+	entry.Extra["svc_override"] = "newsvc"
+	p, _ := pin.New([]pin.Rule{{Key: "svc_override", Target: "service"}})
+	out := p.Apply(entry)
+	if out.Service != "newsvc" {
+		t.Fatalf("expected newsvc, got %s", out.Service)
+	}
+	if _, ok := out.Extra["svc_override"]; ok {
+		t.Fatal("promoted key should be removed from Extra")
+	}
+}
+
 func TestPinDoesNotMutateOriginal(t *testing.T) {
 	entry := base()
 	p, _ := pin.New([]pin.Rule{{Key: "msg_override", Target: "message"}})
