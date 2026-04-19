@@ -37,6 +37,13 @@ func New(rules []Rule) (*Clipper, error) {
 	return &Clipper{rules: rules}, nil
 }
 
+// Rules returns a copy of the rules configured on this Clipper.
+func (c *Clipper) Rules() []Rule {
+	out := make([]Rule, len(c.rules))
+	copy(out, c.rules)
+	return out
+}
+
 // Apply returns a new LogEntry with numeric extra fields clamped according
 // to the configured rules. Non-numeric values are left untouched.
 func (c *Clipper) Apply(e reader.LogEntry) reader.LogEntry {
