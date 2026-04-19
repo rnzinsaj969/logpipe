@@ -1,6 +1,7 @@
 package proxy_test
 
 import (
+	"fmt"
 	"sync"
 	"testing"
 
