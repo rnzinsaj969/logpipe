@@ -44,3 +44,22 @@ func TestMultipleServicesIndependent(t *testing.T) {
 		}
 	}
 }
+
+// TestWindowExpiry verifies that quota counters reset after the window elapses.
+func TestWindowExpiry(t *testing.T) {
+	window := 100 * time.Millisecond
+	q, _ := quota.New(quota.Options{MaxEntries: 1, Window: window})
+
+	if err := q.Allow("svc"); err != nil {
+		t.Fatalf("first allow: unexpected error %v", err)
+	}
+	if err := q.Allow("svc"); err != quota.ErrQuotaExceeded {
+		t.Fatal("expected quota exceeded before window reset")
+	}
+
+	time.Sleep(window + 20*time.Millisecond)
+
+	if err := q.Allow("svc"); err != nil {
+		t.Errorf("after window expiry: unexpected error %v", err)
+	}
+}
