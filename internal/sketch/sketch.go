@@ -73,6 +73,20 @@ func (s *Sketch) Reset() {
 	}
 }
 
+// TotalCount returns the sum of all deltas ever added to the sketch.
+// Because each insertion updates every row identically, the total is
+// read from row 0 by summing its buckets. This reflects the total
+// event volume, not the number of distinct keys.
+func (s *Sketch) TotalCount() uint64 {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	var total uint64
+	for _, v := range s.table[0] {
+		total += v
+	}
+	return total
+}
+
 // bucket returns the column index for key in row i using a seeded FNV hash.
 func (s *Sketch) bucket(key string, seed int) uint64 {
 	h := fnv.New64a()
