@@ -62,6 +62,22 @@ func (rt *Router) Match(entry reader.LogEntry) string {
 	return ""
 }
 
+// MatchAll returns all destination labels whose rules match entry, in order.
+// This is useful when multiple sinks should receive the same log entry.
+func (rt *Router) MatchAll(entry reader.LogEntry) []string {
+	var destinations []string
+	for _, r := range rt.rules {
+		if r.Level != "" && entry.Level != r.Level {
+			continue
+		}
+		if r.compiledService != nil && !r.compiledService.MatchString(entry.Service) {
+			continue
+		}
+		destinations = append(destinations, r.Destination)
+	}
+	return destinations
+}
+
 // Rules returns a copy of the router's rule list.
 func (rt *Router) Rules() []Rule {
 	out := make([]Rule, len(rt.rules))
