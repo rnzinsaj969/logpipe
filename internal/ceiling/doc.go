@@ -1,18 +1,17 @@
-// Package ceiling provides a per-service entry rate limiter that enforces
-// a maximum number of log entries allowed within a sliding time window.
+// Package ceiling provides a per-service rolling-window entry cap.
 //
-// A Ceiling tracks counts independently for each service name. Once a service
-// exceeds the configured maximum, subsequent entries are dropped until the
-// window resets.
+// A Ceiling tracks how many log entries each service has emitted within a
+// configurable time window. Once a service reaches the configured maximum,
+// further entries are dropped until the oldest observations fall outside the
+// window and free up capacity again.
 //
-// Example usage:
+// Typical usage:
 //
-//	c, err := ceiling.New(100, time.Minute)
+//	ceil, err := ceiling.New(100, time.Minute)
 //	if err != nil {
 //		log.Fatal(err)
 //	}
-//
-//	if c.Allow(entry) {
-//		// process entry
+//	if ceil.Allow(entry) {
+//		// forward entry downstream
 //	}
 package ceiling

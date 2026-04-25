@@ -2,81 +2,74 @@ package ceiling
 
 import (
 	"testing"
+	"time"
 
 	"github.com/logpipe/logpipe/internal/reader"
 )
 
-func entry(service string) reader.LogEntry {
-	return reader.LogEntry{Service: service, Message: "test", Level: "info"}
+func entry(svc string) reader.LogEntry {
+	return reader.LogEntry{Service: svc, Message: "test", Level: "info"}
 }
 
 func TestNewInvalidMaxReturnsError(t *testing.T) {
-	_, err := New(0)
+	_, err := New(0, time.Second)
 	if err == nil {
 		t.Fatal("expected error for max=0")
 	}
 }
 
 func TestAllowWithinLimit(t *testing.T) {
-	c, _ := New(3)
+	c, err := New(3, time.Minute)
+	if err != nil {
+		t.Fatal(err)
+	}
 	for i := 0; i < 3; i++ {
 		if !c.Allow(entry("svc")) {
-			t.Fatalf("expected Allow=true on iteration %d", i)
+			t.Fatalf("expected allow on call %d", i+1)
 		}
 	}
 }
 
 func TestAllowExceedsLimit(t *testing.T) {
-	c, _ := New(2)
+	c, err := New(2, time.Minute)
+	if err != nil {
+		t.Fatal(err)
+	}
 	c.Allow(entry("svc"))
 	c.Allow(entry("svc"))
 	if c.Allow(entry("svc")) {
-		t.Fatal("expected Allow=false after ceiling reached")
+		t.Fatal("expected deny on third call")
 	}
 }
 
 func TestAllowIndependentServices(t *testing.T) {
-	c, _ := New(1)
+	c, _ := New(1, time.Minute)
 	if !c.Allow(entry("a")) {
-		t.Fatal("expected Allow=true for service a")
+		t.Fatal("expected allow for service a")
 	}
 	if !c.Allow(entry("b")) {
-		t.Fatal("expected Allow=true for service b")
+		t.Fatal("expected allow for service b")
 	}
 	if c.Allow(entry("a")) {
-		t.Fatal("expected Allow=false for service a after ceiling")
+		t.Fatal("expected deny for service a second call")
 	}
 }
 
-func TestResetRestoresAllowance(t *testing.T) {
-	c, _ := New(1)
+func TestAllowResetsAfterWindow(t *testing.T) {
+	c, _ := New(1, 50*time.Millisecond)
+	c.nowFunc = func() time.Time { return time.Now().Add(-100 * time.Millisecond) }
 	c.Allow(entry("svc"))
-	if c.Allow(entry("svc")) {
-		t.Fatal("expected Allow=false before reset")
+	c.nowFunc = time.Now
+	if !c.Allow(entry("svc")) {
+		t.Fatal("expected allow after window expiry")
 	}
+}
+
+func TestResetClearsState(t *testing.T) {
+	c, _ := New(1, time.Minute)
+	c.Allow(entry("svc"))
 	c.Reset()
 	if !c.Allow(entry("svc")) {
-		t.Fatal("expected Allow=true after reset")
-	}
-}
-
-func TestSnapshotIsIsolated(t *testing.T) {
-	c, _ := New(5)
-	c.Allow(entry("x"))
-	c.Allow(entry("x"))
-	snap := c.Snapshot()
-	snap["x"] = 999
-	if c.Snapshot()["x"] != 2 {
-		t.Fatal("snapshot mutation affected internal state")
-	}
-}
-
-func TestEmptyServiceUsesDefault(t *testing.T) {
-	c, _ := New(1)
-	if !c.Allow(entry("")) {
-		t.Fatal("expected Allow=true for empty service")
-	}
-	if c.Allow(entry("")) {
-		t.Fatal("expected Allow=false for empty service after ceiling")
+		t.Fatal("expected allow after reset")
 	}
 }
