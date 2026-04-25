@@ -58,6 +58,13 @@ func (a *Annotator) Apply(e reader.LogEntry) reader.LogEntry {
 	return out
 }
 
+// Rules returns a copy of the annotator's compiled rules.
+func (a *Annotator) Rules() []Rule {
+	out := make([]Rule, len(a.rules))
+	copy(out, a.rules)
+	return out
+}
+
 func copyExtra(src map[string]any) map[string]any {
 	dst := make(map[string]any, len(src))
 	for k, v := range src {
