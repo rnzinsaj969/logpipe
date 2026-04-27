@@ -1,70 +1,78 @@
-// Package clamp provides a per-service rate limiter that enforces a maximum
-// number of log entries within a rolling time window, dropping entries that
-// exceed the cap.
+// Package clamp limits the rate of log entries per service within a sliding
+// time window, dropping entries that exceed the configured maximum.
 package clamp
 
 import (
+	"fmt"
 	"sync"
 	"time"
 
 	"github.com/logpipe/logpipe/internal/reader"
 )
 
-type bucket struct {
-	count int
-	reset time.Time
+// clock is a narrow interface for obtaining the current time, allowing
+// deterministic testing without real-time dependencies.
+type clock interface {
+	Now() time.Time
 }
 
-// Limiter enforces a per-service entry cap within a rolling window.
-type Limiter struct {
-	mu     sync.Mutex
+type realClock struct{}
+
+func (realClock) Now() time.Time { return time.Now() }
+
+// Clamp drops log entries for a given service once the count within the
+// sliding window exceeds Max.
+type Clamp struct {
 	max    int
-	window time.Duration
-	clock  func() time.Time
-	state  map[string]*bucket
+	win    time.Duration
+	clock  clock
+	mu     sync.Mutex
+	bucket map[string][]time.Time
 }
 
-// New returns a Limiter that allows at most max entries per service within
-// the given window duration. It returns an error if max is not positive or
-// window is zero.
-func New(max int, window time.Duration) (*Limiter, error) {
-	return newWithClock(max, window, time.Now)
+// New returns a Clamp that allows at most max entries per service within win.
+// max must be positive and win must be greater than zero.
+func New(max int, win time.Duration) (*Clamp, error) {
+	return newWithClock(max, win, realClock{})
 }
 
-func newWithClock(max int, window time.Duration, clock func() time.Time) (*Limiter, error) {
+func newWithClock(max int, win time.Duration, c clock) (*Clamp, error) {
 	if max <= 0 {
 		return nil, fmt.Errorf("clamp: max must be positive, got %d", max)
 	}
-	if window <= 0 {
-		return nil, fmt.Errorf("clamp: window must be positive, got %s", window)
+	if win <= 0 {
+		return nil, fmt.Errorf("clamp: window must be positive, got %s", win)
 	}
-	return &Limiter{
+	return &Clamp{
 		max:    max,
-		window: window,
-		clock:  clock,
-		state:  make(map[string]*bucket),
+		win:    win,
+		clock:  c,
+		bucket: make(map[string][]time.Time),
 	}, nil
 }
 
-// Allow reports whether the entry should be forwarded. Entries from services
-// that have exceeded the cap for the current window are dropped.
-func (l *Limiter) Allow(e reader.LogEntry) bool {
-	l.mu.Lock()
-	defer l.mu.Unlock()
+// Allow reports whether the entry should be forwarded. Entries that push the
+// per-service count above Max within the current window are rejected.
+func (c *Clamp) Allow(e reader.LogEntry) bool {
+	now := c.clock.Now()
+	cutoff := now.Add(-c.win)
 
-	now := l.clock()
-	svc := e.Service
+	c.mu.Lock()
+	defer c.mu.Unlock()
 
-	b, ok := l.state[svc]
-	if !ok || now.After(b.reset) {
-		l.state[svc] = &bucket{count: 1, reset: now.Add(l.window)}
-		return true
+	times := c.bucket[e.Service]
+	var kept []time.Time
+	for _, t := range times {
+		if t.After(cutoff) {
+			kept = append(kept, t)
+		}
 	}
 
-	if b.count >= l.max {
+	if len(kept) >= c.max {
+		c.bucket[e.Service] = kept
 		return false
 	}
 
-	b.count++
+	c.bucket[e.Service] = append(kept, now)
 	return true
 }
