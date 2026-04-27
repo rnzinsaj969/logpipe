@@ -1,5 +1,5 @@
 // Package ceiling enforces a per-service maximum entry count within a
-// rolling time window, dropping entries that exceed the configured cap.
+// rolling time window, dropping entries that exceed the configured limit.
 package ceiling
 
 import (
@@ -11,61 +11,48 @@ import (
 )
 
 // Ceiling drops log entries for a service once the configured maximum
-// count within the rolling window has been reached.
+// count has been reached within the current window.
 type Ceiling struct {
 	mu      sync.Mutex
 	max     int
 	window  time.Duration
-	counts  map[string][]time.Time
+	counts  map[string]int
+	resets  map[string]time.Time
 	nowFunc func() time.Time
 }
 
 // New creates a Ceiling that allows at most max entries per service
-// within the given rolling window duration.
+// within window. It returns an error when max is not positive.
 func New(max int, window time.Duration) (*Ceiling, error) {
 	if max <= 0 {
 		return nil, fmt.Errorf("ceiling: max must be positive, got %d", max)
 	}
-	if window <= 0 {
-		return nil, fmt.Errorf("ceiling: window must be positive, got %s", window)
-	}
 	return &Ceiling{
 		max:     max,
 		window:  window,
-		counts:  make(map[string][]time.Time),
+		counts:  make(map[string]int),
+		resets:  make(map[string]time.Time),
 		nowFunc: time.Now,
 	}, nil
 }
 
-// Allow returns true when the entry is within the per-service limit and
-// records the observation. It returns false when the cap is exceeded.
+// Allow returns true when the entry is within the per-service limit for
+// the current window, and false when the ceiling has been reached.
 func (c *Ceiling) Allow(e reader.LogEntry) bool {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
 	now := c.nowFunc()
-	cutoff := now.Add(-c.window)
+	svc := e.Service
 
-	times := c.counts[e.Service]
-	filtered := times[:0]
-	for _, t := range times {
-		if t.After(cutoff) {
-			filtered = append(filtered, t)
-		}
+	if reset, ok := c.resets[svc]; !ok || now.After(reset) {
+		c.counts[svc] = 0
+		c.resets[svc] = now.Add(c.window)
 	}
 
-	if len(filtered) >= c.max {
-		c.counts[e.Service] = filtered
+	if c.counts[svc] >= c.max {
 		return false
 	}
-
-	c.counts[e.Service] = append(filtered, now)
+	c.counts[svc]++
 	return true
-}
-
-// Reset clears all per-service counters.
-func (c *Ceiling) Reset() {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	c.counts = make(map[string][]time.Time)
 }

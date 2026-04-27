@@ -8,7 +8,7 @@ import (
 )
 
 func entry(svc string) reader.LogEntry {
-	return reader.LogEntry{Service: svc, Message: "test", Level: "info"}
+	return reader.LogEntry{Service: svc, Message: "msg", Level: "info"}
 }
 
 func TestNewInvalidMaxReturnsError(t *testing.T) {
@@ -19,9 +19,9 @@ func TestNewInvalidMaxReturnsError(t *testing.T) {
 }
 
 func TestAllowWithinLimit(t *testing.T) {
-	c, err := New(3, time.Minute)
+	c, err := New(3, time.Second)
 	if err != nil {
-		t.Fatal(err)
+		t.Fatalf("unexpected error: %v", err)
 	}
 	for i := 0; i < 3; i++ {
 		if !c.Allow(entry("svc")) {
@@ -31,19 +31,16 @@ func TestAllowWithinLimit(t *testing.T) {
 }
 
 func TestAllowExceedsLimit(t *testing.T) {
-	c, err := New(2, time.Minute)
-	if err != nil {
-		t.Fatal(err)
-	}
+	c, _ := New(2, time.Second)
 	c.Allow(entry("svc"))
 	c.Allow(entry("svc"))
 	if c.Allow(entry("svc")) {
-		t.Fatal("expected deny on third call")
+		t.Fatal("expected deny after limit reached")
 	}
 }
 
 func TestAllowIndependentServices(t *testing.T) {
-	c, _ := New(1, time.Minute)
+	c, _ := New(1, time.Second)
 	if !c.Allow(entry("a")) {
 		t.Fatal("expected allow for service a")
 	}
@@ -51,25 +48,18 @@ func TestAllowIndependentServices(t *testing.T) {
 		t.Fatal("expected allow for service b")
 	}
 	if c.Allow(entry("a")) {
-		t.Fatal("expected deny for service a second call")
+		t.Fatal("expected deny for service a on second call")
 	}
 }
 
 func TestAllowResetsAfterWindow(t *testing.T) {
 	c, _ := New(1, 50*time.Millisecond)
-	c.nowFunc = func() time.Time { return time.Now().Add(-100 * time.Millisecond) }
 	c.Allow(entry("svc"))
-	c.nowFunc = time.Now
-	if !c.Allow(entry("svc")) {
-		t.Fatal("expected allow after window expiry")
+	if c.Allow(entry("svc")) {
+		t.Fatal("expected deny within window")
 	}
-}
-
-func TestResetClearsState(t *testing.T) {
-	c, _ := New(1, time.Minute)
-	c.Allow(entry("svc"))
-	c.Reset()
+	time.Sleep(60 * time.Millisecond)
 	if !c.Allow(entry("svc")) {
-		t.Fatal("expected allow after reset")
+		t.Fatal("expected allow after window reset")
 	}
 }
