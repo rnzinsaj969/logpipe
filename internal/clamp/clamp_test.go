@@ -11,59 +11,55 @@ func entry(svc string) reader.LogEntry {
 	return reader.LogEntry{Service: svc, Message: "msg", Level: "info"}
 }
 
-type fixedClock struct{ t time.Time }
-
-func (f *fixedClock) Now() time.Time { return f.t }
+func fixedClock(t time.Time) clock {
+	return func() time.Time { return t }
+}
 
 func TestAllowWithinMax(t *testing.T) {
-	clk := &fixedClock{t: time.Unix(1000, 0)}
-	c, err := newWithClock(3, time.Second, clk)
+	now := time.Now()
+	c, err := newWithClock(3, time.Second, fixedClock(now))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	e := entry("svc-a")
 	for i := 0; i < 3; i++ {
-		if !c.Allow(e) {
-			t.Fatalf("expected allow on call %d", i+1)
+		if !c.Allow(entry("svc")) {
+			t.Fatalf("expected Allow=true on call %d", i+1)
 		}
 	}
 }
 
 func TestAllowExceedsMax(t *testing.T) {
-	clk := &fixedClock{t: time.Unix(1000, 0)}
-	c, _ := newWithClock(2, time.Second, clk)
-	e := entry("svc-b")
-	c.Allow(e)
-	c.Allow(e)
-	if c.Allow(e) {
-		t.Fatal("expected entry to be dropped after exceeding max")
+	now := time.Now()
+	c, _ := newWithClock(2, time.Second, fixedClock(now))
+	c.Allow(entry("svc"))
+	c.Allow(entry("svc"))
+	if c.Allow(entry("svc")) {
+		t.Fatal("expected Allow=false when limit exceeded")
 	}
 }
 
 func TestAllowResetsAfterWindow(t *testing.T) {
-	clk := &fixedClock{t: time.Unix(1000, 0)}
-	c, _ := newWithClock(2, time.Second, clk)
-	e := entry("svc-c")
-	c.Allow(e)
-	c.Allow(e)
-	// advance past window
-	clk.t = time.Unix(1002, 0)
-	if !c.Allow(e) {
-		t.Fatal("expected allow after window reset")
+	now := time.Now()
+	c, _ := newWithClock(1, time.Second, fixedClock(now))
+	c.Allow(entry("svc"))
+	// Advance past the window.
+	c.clock = fixedClock(now.Add(2 * time.Second))
+	if !c.Allow(entry("svc")) {
+		t.Fatal("expected Allow=true after window reset")
 	}
 }
 
 func TestAllowIndependentServices(t *testing.T) {
-	clk := &fixedClock{t: time.Unix(1000, 0)}
-	c, _ := newWithClock(1, time.Second, clk)
-	if !c.Allow(entry("svc-x")) {
-		t.Fatal("expected allow for svc-x")
+	now := time.Now()
+	c, _ := newWithClock(1, time.Second, fixedClock(now))
+	if !c.Allow(entry("a")) {
+		t.Fatal("expected Allow=true for service a")
 	}
-	if !c.Allow(entry("svc-y")) {
-		t.Fatal("expected allow for svc-y")
+	if !c.Allow(entry("b")) {
+		t.Fatal("expected Allow=true for service b")
 	}
-	if c.Allow(entry("svc-x")) {
-		t.Fatal("expected drop for svc-x after limit")
+	if c.Allow(entry("a")) {
+		t.Fatal("expected Allow=false for service a on second call")
 	}
 }
 
@@ -75,8 +71,8 @@ func TestNewInvalidMaxReturnsError(t *testing.T) {
 }
 
 func TestNewInvalidWindowReturnsError(t *testing.T) {
-	_, err := New(5, 0)
+	_, err := New(1, 0)
 	if err == nil {
-		t.Fatal("expected error for zero window")
+		t.Fatal("expected error for window=0")
 	}
 }
